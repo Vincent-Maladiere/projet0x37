@@ -1,16 +1,16 @@
 CC=gcc
-CFLAGS= -c -g -Wall
-LFLAGS = -L audio/. audio/libsndfile.a -lm -lfftw3
+CFLAGS=  -c -g -Wall
+LFLAGS =  -L audio/. audio/libsndfile.a -lm -L traitement/ traitement/libfftw3.a
 
 OBJECTS = audio/audioprocess.o main.o midi/listemidi.o midi/midi.o traitement/fonctions.o textexport/textexport.o
 
-all: main.exe
+all: projet0x37.exe clean
 
-main.exe : $(OBJECTS)
-	$(CC) $(OBJECTS) $(LFLAGS) -o main.exe
+projet0x37.exe : $(OBJECTS)
+	$(CC) $(OBJECTS) $(LFLAGS) -o projet0x37.exe
 
 %.o: %.c
 	$(CC) $(CFLAGS) $< -o $@
 
 clean:
-	rm -f $(OBJECTS) main.exe
+	rm -f $(OBJECTS)

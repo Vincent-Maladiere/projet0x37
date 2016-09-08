@@ -4,7 +4,7 @@
 #include "midi.h"
 #include <math.h>
 
-#define D 240 // division de la noire 240 >> 1 seconde
+extern int16_t divnoire; // division de la noire 240 >> 1 seconde
 
 void affiche(liste L){ // pour tester dans le programme
 	liste p;
@@ -39,10 +39,13 @@ Important: rajouter des vérifications pour les appels des fonctions fseek, call
 
 
 FILE * midihead( char * nompartition ){		//OK
-	char t[14]={0x4d,0x54,0x68,0x64,0x00,0x00,0x00,0x06,0x00,0x01,0x00,0x01,0x00,0xF0}; // ici on a mis le nombre de division à 0xF0= 240 , peut être provisoire
+	char t[12]={0x4d,0x54,0x68,0x64,0x00,0x00,0x00,0x06,0x00,0x01,0x00,0x01}; // ici on a mis le nombre de division à 0xF0= 240 , peut être provisoire
 	FILE * midibin;
+	int16_t swappeddivnoire;
 	midibin = fopen(nompartition,"w+b");
 	fwrite(t,sizeof(char),sizeof(t),midibin);
+	swappeddivnoire= ((divnoire<<8)&0xff00) | ((divnoire>>8)&0x00ff) ;
+	fwrite(&swappeddivnoire,sizeof(swappeddivnoire),1,midibin);
 	return midibin;
 }
 
@@ -81,7 +84,7 @@ FILE * miditrackdata( Tnote tab , int tailletab , char * trackdata ){
 	char t[1] = {0x00};
 	fwrite(t,sizeof(char),1,miditrackdata);
 	for(i=0;i<tailletab;i++){
-		if(i == tailletab-1 ){
+		if(i == tailletab-1 && tab[i].temps>0){
 			Li=tabtoliste(tab[i].tabchord);
 			noteon(Li,miditrackdata);
 			Li=concat(Li,Si);
@@ -89,26 +92,31 @@ FILE * miditrackdata( Tnote tab , int tailletab , char * trackdata ){
 			//freeliste(&Si); bug a corriger
 			noteoff(Li,Si,miditrackdata);
 			freeliste(&Li);
-		
 		}
 		else{
-			Li=tabtoliste( tab[i].tabchord );
-			noteon(Li,miditrackdata);
-			Li=concat(Li,Si);
-			Li=tri(&Li);
-			tau = tab[i+1].temps-tab[i].temps;
-			Si = split(&Li,tau);
-			if(Li){ // si Li est non NULL il y a des notes à éteindre
-				for( p=Li ; p->suiv ; p=p->suiv );
-				taudelay = tau - p->duree ; // a faire avant le noteoff ET le split
-				noteoff( Li , Si , miditrackdata ); // l'ajustement temporel des listes s'effectue dans note off et delay
-				delay( Si , taudelay , miditrackdata) ;
-				freeliste(&Li);
-			}
-			else{ // si Li est NULL il y a aucune note à éteindre , on comble le délai a l'aide de delay.
-				taudelay = tau;
-				delay(Si,taudelay,miditrackdata);
-				affiche(Si);
+			if( (tab[i].temps > 0 && i!=0) || i==0){
+				Li=tabtoliste( tab[i].tabchord );
+				noteon(Li,miditrackdata);
+				Li=concat(Li,Si);
+				Li=tri(&Li);
+				
+				if(tab[i+1].temps  <= 0 ){
+					tau=0.99;
+				}
+				else tau = tab[i+1].temps-tab[i].temps;
+				
+				Si = split(&Li,tau);
+				if(Li){ // si Li est non NULL il y a des notes à éteindre
+					for( p=Li ; p->suiv ; p=p->suiv );
+					taudelay = tau - p->duree ; // a faire avant le noteoff ET le split
+					noteoff( Li , Si , miditrackdata ); // l'ajustement temporel des listes s'effectue dans note off et delay
+					delay( Si , taudelay , miditrackdata) ;
+					freeliste(&Li);
+				}
+				else{ // si Li est NULL il y a aucune note à éteindre , on comble le délai a l'aide de delay.
+					taudelay = tau;
+					delay(Si,taudelay,miditrackdata);
+				}
 			}
 		}
 	}
@@ -123,7 +131,6 @@ FILE * endmiditrack( FILE * miditrackhead , FILE * miditrackdata , char * track 
 	fseek(miditrackhead,0,SEEK_END);
 	size=(int)tailletrack(miditrackdata);
 	size+=3; // on rajoute 3 octets pour la cloture du fichier par ff 2f 00
-	printf("size of track : %d\n",size);// test
 	swappedsize= ((size>>24)&0xff) | ((size<<8)&0xff0000) | ((size>>8)&0xff00) | ((size<<24)&0xff000000); // conversion big endian / little endian
 	fwrite(&swappedsize,sizeof(swappedsize),1,miditrackhead);
 	miditrack=mergeandclose(miditrackhead,miditrackdata,track);
@@ -229,7 +236,7 @@ bufferc convert_128( double tau ){ // a revoir on doit ajouter 128 a tout les oc
 	bufferc buf=NULL;
 	int R;
 	int Q = 1;
-	double N = floor(tau*D);
+	double N = floor(tau*divnoire);
 	int p = 1;
 	while(Q != 0){
 		R = (int)N%128;
